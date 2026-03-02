@@ -1,0 +1,60 @@
+================================================================================
+REVIEW-TRUST DOMAIN - EVENT CATALOG
+================================================================================
+Domain: review-trust-domain
+Event Source: hand-made.review-trust-domain
+Last Updated: 2026-02-16
+
+================================================================================
+PRODUCED EVENTS
+================================================================================
+
+Event: review.created.v1
+Status: 🔲 PLANNED
+--------------------------------------------------------------------------------
+Description:
+  Published when a review is submitted for a product or maker.
+
+Trigger: TBD
+Republish Lambda: TBD
+Payload Schema: TBD
+Consumers: maker-domain, product-domain, notification-domain
+
+--------------------------------------------------------------------------------
+
+Event: review.updated.v1
+Status: 🔲 PLANNED
+--------------------------------------------------------------------------------
+Description:
+  Published when a review is edited by the reviewer.
+
+Trigger: TBD
+Republish Lambda: TBD
+Payload Schema: TBD
+Consumers: maker-domain, product-domain, notification-domain
+
+--------------------------------------------------------------------------------
+
+Event: review.flagged.v1
+Status: 🔲 PLANNED
+--------------------------------------------------------------------------------
+Description:
+  Published when a review is flagged for moderation.
+
+Trigger: TBD
+Republish Lambda: TBD
+Payload Schema: TBD
+Consumers: notification-domain (internal moderation team)
+
+================================================================================
+CONSUMED EVENTS
+================================================================================
+
+Event: order.completed.v1
+Source: hand-made.order-domain
+Status: 🔲 PLANNED
+--------------------------------------------------------------------------------
+Handler Lambda: TBD
+Action: Enable review submission for completed order
+
+================================================================================

@@ -1,0 +1,240 @@
+# Review & Trust Domain - Business Logic
+
+## Domain Purpose
+The Review & Trust Domain manages reviews, ratings, moderation status, and abuse flags. This domain is responsible for platform credibility and trust signals.
+
+## Data Layer Ownership
+The Review & Trust Domain owns and manages the following DynamoDB tables:
+- reviews: Review records with ratings and comments
+- rating_aggregates: Aggregated ratings for makers and products
+- abuse_reports: Abuse and moderation reports
+
+## Business Rules
+
+### 1. Review Creation
+- Reviews can only be created for completed orders
+- One review per order (collector can only review once)
+- Reviews must include rating (1-5)
+- Comments are optional but encouraged
+- Media attachments are optional
+- Reviews start in "pending" moderation status
+
+### 2. Review Moderation
+- All reviews are moderated before publication
+- Moderation status: pending, approved, rejected
+- Rejected reviews are not visible
+- Moderation is performed by admins or automated systems
+- Moderation checks for spam, abuse, inappropriate content
+
+### 3. Rating Aggregation
+- Ratings are aggregated for makers and products
+- Average rating is calculated from approved reviews
+- Rating distribution is tracked (count per star level)
+- Total reviews count is maintained
+- Aggregates are updated when reviews are approved
+
+### 4. Abuse Reporting
+- Users can report reviews, products, makers, or collectors
+- Abuse reports require reason and optional description
+- Abuse reports are reviewed by admins
+- Status: pending, reviewed, resolved, dismissed
+- Multiple reports for same entity are tracked
+
+### 5. Trust Signals
+- Rating aggregates are used as trust signals
+- High ratings increase visibility
+- Low ratings may trigger review
+- Trust signals are published to other domains
+- Trust signals affect discovery ranking
+
+### 6. Review Visibility
+- Only approved reviews are visible
+- Reviews are displayed chronologically
+- Review media is displayed with review
+- Review responses from makers are supported (future feature)
+
+## Data Layer Interactions
+
+### Read Operations
+- Read review by id
+- Read reviews by maker_user_id
+- Read reviews by product_id
+- Read reviews by order_id
+- Read pending reviews for moderation
+- Read rating aggregates by entity_id
+- Read abuse reports by status
+- Read abuse reports by entity
+
+### Write Operations
+- Create review
+- Update review moderation status
+- Approve/reject review
+- Create abuse report
+- Update abuse report status
+- Update rating aggregates
+- Delete review (admin only)
+
+### Data Integrity Rules
+- Reviews must reference valid order_id from Order Domain
+- Reviews must reference valid reviewer_user_id (collector)
+- Reviews must reference valid maker_user_id and product_id
+- Rating must be between 1 and 5
+- One review per order (enforced)
+- Rating aggregates must be recalculated on review approval
+- Abuse reports must reference valid entity
+
+## Event-Driven Communication
+
+### Events Published
+- ReviewSubmitted: When a review is created
+- ReviewApproved: When a review is approved
+- ReviewRejected: When a review is rejected
+- MakerRatingUpdated: When maker rating aggregate changes
+- ProductRatingUpdated: When product rating aggregate changes
+- AbuseReportCreated: When an abuse report is filed
+
+### Events Consumed
+- OrderCompleted: From Order Domain - enables review creation
+- UserSuspended: From Identity Domain - may affect review visibility
+- ProductUnpublished: From Product Domain - may affect review visibility
+
+## Cross-Domain Boundaries
+
+### What This Domain Owns
+- Reviews and ratings
+- Moderation status
+- Rating aggregates
+- Abuse reports
+- Trust signals
+
+### What This Domain Does NOT Own
+- Orders (Order Domain)
+- Products (Product Domain)
+- Maker profiles (Maker Domain)
+- User suspension decisions (Identity Domain)
+- Discovery ranking (Discovery Domain)
+
+## Business Logic Constraints
+1. Reviews can only be created for completed orders
+2. One review per order (enforced)
+3. Rating must be between 1 and 5
+4. Reviews must be moderated before publication
+5. Rating aggregates are read-only (calculated)
+6. Abuse reports require valid entity reference
+7. Approved reviews cannot be deleted (only hidden)
+8. Rating aggregates must be updated atomically
+
+## Domain Structure & Implementation
+
+### Directory Structure
+The Review & Trust Domain follows a structure similar to `/Users/jred/AWS/aedcor-backend/support_backend/lib`:
+
+```
+lib/
+├── constructs/
+│   ├── dynamodb/
+│   │   └── review-tables/
+│   │       └── review-tables-construct.ts
+│   ├── lambda/
+│   │   └── review/
+│   │       ├── create-review/
+│   │       ├── moderate-review/
+│   │       ├── get-review/
+│   │       ├── list-reviews/
+│   │       ├── create-abuse-report/
+│   │       ├── update-rating-aggregates/
+│   │       └── event-consumer/
+│   └── appsync/
+│       └── review-appsync/
+│           └── review-appsync-construct.ts
+├── functions/
+│   ├── lambda/
+│   │   └── review/
+│   │       ├── create-review/
+│   │       │   └── create-review-lambda.js
+│   │       ├── moderate-review/
+│   │       │   └── moderate-review-lambda.js
+│   │       ├── get-review/
+│   │       │   └── get-review-lambda.js
+│   │       ├── list-reviews/
+│   │       │   └── list-reviews-lambda.js
+│   │       ├── create-abuse-report/
+│   │       │   └── create-abuse-report-lambda.js
+│   │       ├── update-rating-aggregates/
+│   │       │   └── update-rating-aggregates-lambda.js
+│   │       └── event-consumer/
+│   │           └── event-consumer-lambda.js
+│   └── appsync-resolvers/
+│       └── review/
+│           ├── create-review-resolver.js
+│           └── list-reviews-resolver.js
+└── utils/
+    ├── response-utils.ts
+    ├── validation-utils.ts
+    ├── moderation-utils.ts
+    ├── rating-aggregator.ts
+    └── event-publisher.ts
+```
+
+### Data Layer Interaction Patterns
+
+#### Direct Data Access
+- **Reviews**: Direct DynamoDB access via `reviews` table using `review_id` as partition key
+- **Rating Aggregates**: Direct DynamoDB access via `rating_aggregates` table using `entity_id` (PK) and `entity_type` (SK)
+- **Abuse Reports**: Direct DynamoDB access via `abuse_reports` table using `report_id` as partition key
+
+#### Query Patterns
+- **Get review**: Single item read by `review_id`
+- **List reviews by maker**: GSI query by `maker_user_id`
+- **List reviews by product**: GSI query by `product_id`
+- **List reviews by order**: GSI query by `order_id`
+- **List pending reviews**: GSI query by `moderation_status` = "pending"
+- **Get rating aggregate**: Single item read by `entity_id` + `entity_type`
+- **List abuse reports**: GSI query by `status` or `entity_id`
+
+#### Write Patterns
+- **Create review**: PutItem with order validation and one-review-per-order enforcement
+- **Moderate review**: UpdateItem with status transition (pending → approved/rejected)
+- **Update rating aggregates**: UpdateItem with atomic increment operations (count, sum)
+- **Create abuse report**: PutItem with entity validation
+
+### Business Logic Implementation
+
+#### Review Moderation
+- All reviews start in "pending" status
+- Moderation performed by admins or automated systems
+- Moderation checks for spam, abuse, inappropriate content
+- Approved reviews become visible, rejected reviews are hidden
+- Moderation handled via Moderate Review Lambda
+
+#### Rating Aggregation
+- Ratings aggregated for makers and products
+- Average rating calculated from approved reviews only
+- Rating distribution tracked (count per star level)
+- Total reviews count maintained
+- Aggregates updated atomically when reviews approved
+
+#### One Review Per Order Enforcement
+- Conditional write with order_id check prevents duplicates
+- Review creation validates order is completed
+- Review creation validates collector hasn't already reviewed
+
+#### Event Handling
+- **Event Consumer Lambda**: Processes events from other domains
+  - `OrderCompleted` → Enables review creation
+  - `UserSuspended` → May affect review visibility
+  - `ProductUnpublished` → May affect review visibility
+
+#### Data Consistency
+- Review creation uses conditional writes for one-review-per-order
+- Rating aggregates updated atomically with review approval
+- Moderation status transitions enforced with conditional writes
+- Abuse reports are immediately consistent
+
+#### Error Handling
+- Order not completed → Return 400 Bad Request
+- Review already exists → Return 409 Conflict
+- Invalid rating → Return 400 Bad Request
+- Review not found → Return 404 Not Found
+- Unauthorized moderation → Return 403 Forbidden
+- Invalid entity for abuse report → Return 400 Bad Request

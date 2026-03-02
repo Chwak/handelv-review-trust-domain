@@ -1,0 +1,440 @@
+================================================================================
+REVIEW TRUST DOMAIN - INPUT VALIDATION RULES
+================================================================================
+
+This document defines all input validation rules for the Review Trust Domain GraphQL API.
+All mutations and queries must validate inputs according to these rules.
+
+================================================================================
+MUTATION: submitReview
+================================================================================
+
+Input: SubmitReviewInput!
+- orderId: ID! (required)
+- productId: ID! (required)
+- makerUserId: ID! (required)
+- collectorUserId: ID! (required)
+- rating: Int! (required)
+- comment: String (optional)
+- media: [ReviewMediaInput!] (optional)
+
+Validation Rules:
+1. orderId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing order
+   - Order must be COMPLETED status
+
+2. productId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing product
+   - Must match the order's productId
+
+3. makerUserId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing maker
+   - Must match the order's makerUserId
+
+4. collectorUserId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must match authenticated user's ID
+   - Must match the order's collectorUserId
+
+5. rating:
+   - Must be an integer
+   - Minimum: 1
+   - Maximum: 5
+   - Must be a whole number (no decimals)
+
+6. comment (if provided):
+   - Minimum length: 10 characters
+   - Maximum length: 2000 characters
+   - Cannot be all whitespace
+   - Trim leading/trailing whitespace
+   - Must contain at least 2 words
+   - Reject spam patterns and profanity (optional, configurable)
+
+7. media (if provided):
+   - Maximum 5 media items per review
+   - Each media item must have:
+     * mediaType: String! (required)
+       - Must be one of: "image", "video"
+       - Case-sensitive
+     * url: String! (required)
+       - Must be a valid HTTPS URL
+       - Must be from allowed domains (S3, CDN)
+       - Maximum length: 500 characters
+       - Must be accessible
+
+Business Rules:
+- Collector can only review orders they purchased
+- Collector can only submit one review per order
+- Order must be COMPLETED before review can be submitted
+- Review is created in PENDING status
+- Review requires moderation before approval
+- Rating and comment cannot both be empty (at least one required)
+
+Error Responses:
+- 400 Bad Request: Invalid input format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot submit review (not collector, order not completed, etc.)
+- 404 Not Found: Order, product, or maker not found
+- 409 Conflict: Review already exists for this order
+- 422 Unprocessable Entity: Validation failed (detailed field errors)
+
+================================================================================
+MUTATION: updateReview
+================================================================================
+
+Input: UpdateReviewInput!
+- reviewId: ID! (required)
+- comment: String (optional)
+- rating: Int (optional)
+
+Validation Rules:
+1. reviewId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing review
+
+2. comment (if provided):
+   - Minimum length: 10 characters
+   - Maximum length: 2000 characters
+   - Cannot be all whitespace
+   - Trim leading/trailing whitespace
+
+3. rating (if provided):
+   - Must be an integer
+   - Minimum: 1
+   - Maximum: 5
+
+Business Rules:
+- At least one field (comment or rating) must be provided
+- Review must be owned by authenticated user (collectorUserId)
+- Review must be in PENDING or APPROVED status
+- Cannot update REJECTED or DELETED reviews
+- Updated review returns to PENDING status for re-moderation
+- Rating aggregates are recalculated
+
+Error Responses:
+- 400 Bad Request: Invalid input format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot update review (not owner, wrong status)
+- 404 Not Found: Review not found
+- 409 Conflict: Review cannot be updated (rejected or deleted)
+
+================================================================================
+MUTATION: deleteReview
+================================================================================
+
+Input:
+- reviewId: ID! (required)
+
+Validation Rules:
+1. reviewId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing review
+
+Business Rules:
+- Review must be owned by authenticated user (collectorUserId) or admin
+- Review status transitions to DELETED
+- Rating aggregates are recalculated
+- Review is soft-deleted (not permanently removed)
+
+Error Responses:
+- 400 Bad Request: Invalid reviewId format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot delete review
+- 404 Not Found: Review not found
+
+================================================================================
+MUTATION: approveReview
+================================================================================
+
+Input:
+- reviewId: ID! (required)
+
+Validation Rules:
+1. reviewId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing review
+
+Business Rules:
+- User must be admin or moderator
+- Review must be in PENDING status
+- Review status transitions to APPROVED
+- Rating aggregates are updated
+- approvedAt timestamp is set
+
+Error Responses:
+- 400 Bad Request: Invalid reviewId format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Not authorized to approve reviews
+- 404 Not Found: Review not found
+- 409 Conflict: Review not in PENDING status
+
+================================================================================
+MUTATION: rejectReview
+================================================================================
+
+Input:
+- reviewId: ID! (required)
+- reason: String (optional)
+
+Validation Rules:
+1. reviewId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing review
+
+2. reason (if provided):
+   - Maximum length: 500 characters
+   - Cannot be all whitespace
+   - Trim leading/trailing whitespace
+
+Business Rules:
+- User must be admin or moderator
+- Review must be in PENDING status
+- Review status transitions to REJECTED
+- Reason is stored in moderationNotes
+- Rating aggregates are not affected (review not counted)
+
+Error Responses:
+- 400 Bad Request: Invalid input format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Not authorized to reject reviews
+- 404 Not Found: Review not found
+- 409 Conflict: Review not in PENDING status
+
+================================================================================
+MUTATION: submitAbuseReport
+================================================================================
+
+Input: SubmitAbuseReportInput!
+- reviewId: ID! (required)
+- reporterUserId: ID! (required)
+- reason: String! (required)
+
+Validation Rules:
+1. reviewId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing review
+
+2. reporterUserId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must match authenticated user's ID
+
+3. reason:
+   - Minimum length: 10 characters
+   - Maximum length: 500 characters
+   - Cannot be all whitespace
+   - Trim leading/trailing whitespace
+   - Must be a valid abuse reason (spam, harassment, false information, etc.)
+
+Business Rules:
+- User can only report reviews they have access to
+- Cannot report the same review twice (idempotent operation)
+- Abuse report is created in PENDING status
+- Review is flagged for moderation
+- Reporter cannot be the review author
+
+Error Responses:
+- 400 Bad Request: Invalid input format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot report review
+- 404 Not Found: Review not found
+- 409 Conflict: Abuse report already submitted
+
+================================================================================
+QUERY: getReview
+================================================================================
+
+Input:
+- reviewId: ID! (required)
+
+Validation Rules:
+1. reviewId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+
+Business Rules:
+- Review must exist
+- Review must be APPROVED or user must be owner/admin
+- PENDING and REJECTED reviews only visible to owner and admins
+
+Error Responses:
+- 400 Bad Request: Invalid reviewId format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot access review
+- 404 Not Found: Review not found
+
+================================================================================
+QUERY: listReviews
+================================================================================
+
+Input:
+- productId: ID (optional)
+- makerUserId: ID (optional)
+- collectorUserId: ID (optional)
+- limit: Int (optional, default: 20, max: 100)
+- nextToken: String (optional)
+
+Validation Rules:
+1. productId (if provided):
+   - Must be a valid UUID or ID format
+
+2. makerUserId (if provided):
+   - Must be a valid UUID or ID format
+
+3. collectorUserId (if provided):
+   - Must be a valid UUID or ID format
+   - Must match authenticated user's ID (unless admin)
+
+4. limit:
+   - Must be between 1 and 100
+   - Default: 20 if not provided
+   - Must be a positive integer
+
+5. nextToken:
+   - Must be a valid pagination token if provided
+
+Business Rules:
+- At least one filter (productId, makerUserId, collectorUserId) must be provided
+- Only APPROVED reviews are returned (unless user is owner/admin)
+- Results sorted by createdAt descending (most recent first)
+- User can only filter by their own collectorUserId (unless admin)
+
+Error Responses:
+- 400 Bad Request: Invalid input format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot access other user's reviews
+
+================================================================================
+QUERY: getRatingAggregate
+================================================================================
+
+Input:
+- productId: ID (optional)
+- makerUserId: ID (optional)
+
+Validation Rules:
+1. productId (if provided):
+   - Must be a valid UUID or ID format
+
+2. makerUserId (if provided):
+   - Must be a valid UUID or ID format
+
+Business Rules:
+- Exactly one of productId or makerUserId must be provided
+- Returns aggregate ratings from APPROVED reviews only
+- Calculates average rating, total reviews, and rating breakdown
+- Results are cached and updated on review approval/rejection
+
+Error Responses:
+- 400 Bad Request: Invalid input format (must provide productId or makerUserId, not both)
+- 404 Not Found: Product or maker not found
+
+================================================================================
+COMMON VALIDATION PATTERNS
+================================================================================
+
+1. Rating Validation:
+   - Must be integer between 1 and 5
+   - No decimal values allowed
+   - Required for review submission
+
+2. Comment Validation:
+   - Minimum length: 10 characters
+   - Maximum length: 2000 characters
+   - Content moderation for spam and profanity
+   - Trim whitespace
+
+3. Media Validation:
+   - Validate URL accessibility
+   - Check file types
+   - Enforce size and count limits
+   - Validate image dimensions (optional)
+
+4. Status Transitions:
+   - PENDING → APPROVED (via approve)
+   - PENDING → REJECTED (via reject)
+   - Any → DELETED (via delete)
+
+5. Authentication & Authorization:
+   - All mutations require valid authentication token
+   - Users can only modify their own reviews
+   - Admins can moderate all reviews
+
+6. Rate Limiting:
+   - Submit review: 10 per hour per user
+   - Submit abuse report: 5 per hour per user
+   - List reviews: 100 per hour per user
+
+================================================================================
+MODERATION RULES
+================================================================================
+
+1. Automatic Moderation:
+   - Check for spam patterns
+   - Detect profanity
+   - Verify review authenticity
+   - Flag suspicious reviews
+
+2. Manual Moderation:
+   - Admin reviews flagged content
+   - Admin approves or rejects reviews
+   - Admin can add moderation notes
+
+3. Abuse Handling:
+   - Abuse reports trigger review
+   - Multiple reports increase priority
+   - Resolved reports are logged
+
+================================================================================
+CROSS-DOMAIN VALIDATION
+================================================================================
+
+1. Order Validation:
+   - Validate orderId exists
+   - Verify order is COMPLETED
+   - Check order belongs to collector
+   - Verify order details match review inputs
+
+2. Product Validation:
+   - Validate productId exists
+   - Verify product is active
+   - Check product belongs to maker
+
+3. User Validation:
+   - Validate collectorUserId and makerUserId exist
+   - Verify users are active accounts
+
+================================================================================
+ERROR RESPONSE FORMAT
+================================================================================
+
+All validation errors should return structured error responses:
+
+{
+  "errors": [
+    {
+      "message": "Validation failed",
+      "extensions": {
+        "code": "VALIDATION_ERROR",
+        "field": "rating",
+        "reason": "Rating must be between 1 and 5"
+      }
+    }
+  ]
+}
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

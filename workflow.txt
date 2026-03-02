@@ -1,0 +1,191 @@
+================================================================================
+REVIEW TRUST DOMAIN - WORKFLOW DOCUMENTATION
+================================================================================
+
+1. WORKFLOW
+================================================================================
+
+The Review Trust Domain manages reviews, ratings, moderation, and trust signals for the platform.
+
+Main Workflows:
+
+1. Review Creation
+   - Create review for completed order
+   - Review includes rating, comment, optional media
+   - Review associated with order and maker
+
+2. Review Retrieval
+   - Get review details
+   - List reviews for maker
+   - List reviews for product
+   - Paginated review lists
+
+3. Review Moderation
+   - Moderate review (approve, reject, flag)
+   - Automated moderation checks
+   - Manual moderation by admins
+
+4. Rating Aggregation
+   - Calculate average rating for maker
+   - Calculate average rating for product
+   - Update rating aggregates when reviews are added/updated
+
+5. Abuse Reporting
+   - Create abuse report for review
+   - Abuse reports for inappropriate content
+   - Abuse reports handled by moderation
+
+================================================================================
+2. OPERATIONS TYPE
+================================================================================
+
+Operation Types:
+- Review CRUD Operations: Create review, get review, list reviews
+- Moderation Operations: Moderate review
+- Aggregation Operations: Update rating aggregates
+- Abuse Operations: Create abuse report
+
+API Type: GraphQL API (AppSync)
+
+================================================================================
+3. OUTPUT OF EACH OPERATION (NO CODE, JUST DESCRIPTION)
+================================================================================
+
+3.1 Create Review Operation
+   Input: Order ID, reviewer user ID (collector), rating (1-5), comment, media (optional)
+   Process:
+     - Validates order exists and is completed
+     - Validates reviewer is collector of order
+     - Validates order hasn't been reviewed already
+     - Creates review record in reviews table
+     - Sets status to PENDING (awaiting moderation)
+     - Triggers rating aggregate update
+   Output:
+     - Success: Review object with review_id, order_id, reviewer_user_id, maker_user_id, product_id, rating, comment, status (PENDING), created_at
+     - Error: Order not found, order not completed, already reviewed, unauthorized access
+
+3.2 Get Review Operation
+   Input: Review ID
+   Process:
+     - Retrieves review from reviews table
+     - Returns review with all details
+   Output:
+     - Success: Review object with review_id, order_id, reviewer_user_id, maker_user_id, product_id, rating, comment, media, status, created_at, approved_at
+     - Error: Review not found (404)
+
+3.3 List Reviews Operation
+   Input: Maker user ID (optional), product ID (optional), status filter (optional), pagination parameters
+   Process:
+     - Queries reviews table with filters
+     - Returns paginated list of reviews
+     - Only approved reviews shown by default
+   Output:
+     - Success: List of reviews with review_id, reviewer_name, rating, comment, created_at, pagination info
+     - Error: Invalid filters, invalid pagination parameters
+
+3.4 Moderate Review Operation
+   Input: Review ID, moderation action (approve, reject, flag), moderator notes (optional)
+   Process:
+     - Validates review exists
+     - Updates review status (APPROVED, REJECTED, FLAGGED)
+     - Sets moderated_at timestamp
+     - If approved: Triggers rating aggregate update
+     - If rejected: Hides review from public view
+   Output:
+     - Success: Updated review object with status, moderated_at, moderator_notes
+     - Error: Review not found, invalid moderation action
+
+3.5 Update Rating Aggregates Operation (Event-Driven)
+   Input: Review data from review creation/approval
+   Process:
+     - Calculates average rating for maker
+     - Calculates average rating for product
+     - Updates rating_aggregates table
+     - Updates review_count
+   Output:
+     - Success: Updated rating aggregates with maker_user_id, product_id, average_rating, review_count
+     - Error: Calculation failure
+
+3.6 Create Abuse Report Operation
+   Input: Review ID, reporter user ID, abuse reason, description
+   Process:
+     - Validates review exists
+     - Creates abuse report record in abuse_reports table
+     - Sets status to PENDING
+     - Flags review for moderation review
+   Output:
+     - Success: Abuse report object with report_id, review_id, reporter_user_id, reason, description, status (PENDING), created_at
+     - Error: Review not found, duplicate report, validation errors
+
+================================================================================
+4. GENERATED EVENTS - WHO, HOW TO BE COMMUNICATED WITH WHICH OTHER DOMAIN
+================================================================================
+
+Events Published:
+- ReviewSubmitted: Published when review is created
+  - Who: Review Trust Domain
+  - How: EventBridge event bus
+  - Communicated with: Notification Domain, Discovery Domain, Maker Domain
+  - Purpose: Notify maker of new review, update discovery ranking signals, update maker rating
+  - Event Data: review_id, order_id, reviewer_user_id, maker_user_id, product_id, rating, status, created_at
+
+- ReviewApproved: Published when review is approved
+  - Who: Review Trust Domain
+  - How: EventBridge event bus
+  - Communicated with: Notification Domain, Discovery Domain, Maker Domain, Product Domain
+  - Purpose: Notify reviewer of approval, update rating aggregates, update discovery signals, update product rating
+  - Event Data: review_id, maker_user_id, product_id, rating, approved_at
+
+- ReviewRejected: Published when review is rejected
+  - Who: Review Trust Domain
+  - How: EventBridge event bus
+  - Communicated with: Notification Domain
+  - Purpose: Notify reviewer of rejection
+  - Event Data: review_id, reviewer_user_id, rejection_reason, rejected_at
+
+- MakerRatingUpdated: Published when maker rating aggregate is updated
+  - Who: Review Trust Domain
+  - How: EventBridge event bus
+  - Communicated with: Maker Domain, Discovery Domain
+  - Purpose: Update maker profile rating, update discovery ranking
+  - Event Data: maker_user_id, average_rating, review_count, updated_at
+
+- ProductRatingUpdated: Published when product rating aggregate is updated
+  - Who: Review Trust Domain
+  - How: EventBridge event bus
+  - Communicated with: Product Domain, Discovery Domain
+  - Purpose: Update product rating, update discovery ranking
+  - Event Data: product_id, average_rating, review_count, updated_at
+
+- AbuseReportCreated: Published when abuse report is created
+  - Who: Review Trust Domain
+  - How: EventBridge event bus
+  - Communicated with: Notification Domain, Admin Domain (if exists)
+  - Purpose: Notify moderation team, alert for review
+  - Event Data: report_id, review_id, reporter_user_id, reason, created_at
+
+Events Consumed:
+- OrderDelivered: From Order Domain
+  - Purpose: Enable review creation after order delivery
+  - Action: Mark order as eligible for review
+
+- OrderCompleted: From Order Domain
+  - Purpose: Enable review creation after order completion
+  - Action: Mark order as eligible for review, validate order completion before review creation
+
+Cross-Domain Communication:
+- Order Domain: Publishes OrderDelivered, OrderCompleted events that review domain consumes to enable review creation
+- Notification Domain: Receives ReviewSubmitted, ReviewApproved, ReviewRejected, AbuseReportCreated events to send notifications
+- Discovery Domain: Receives ReviewSubmitted, ReviewApproved, MakerRatingUpdated, ProductRatingUpdated events to update ranking signals
+- Maker Domain: Receives MakerRatingUpdated events to update maker profile rating
+- Product Domain: Receives ProductRatingUpdated events to update product rating
+
+Communication Method:
+- EventBridge: Primary method for asynchronous event communication
+- AppSync GraphQL: Direct queries from frontend
+- DynamoDB: Review, rating aggregate, and abuse report data stored in domain tables
+- SSM Parameters: No exports (read-only domain)
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

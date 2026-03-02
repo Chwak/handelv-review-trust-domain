@@ -1,0 +1,64 @@
+# Review Trust Domain - Frontend Data Requirements
+
+## Overview
+All data captured from frontend for reviews and moderation.
+
+**Domain:** Review Trust Domain
+**Purpose:** Reviews, ratings, and abuse reporting
+**Last Updated:** 2026-01-31
+
+---
+
+## 1. REVIEWS
+
+### 1.1 Submit Review
+**Endpoint**: `POST /reviews`
+
+```typescript
+{
+  orderId: string,
+  rating: number,                       // 1-5
+  comment: string,
+  mediaUrls?: string[],                 // Photos/videos
+}
+```
+
+**Validation**: One review per order
+**Events Emitted**: `ReviewSubmitted`
+
+### 1.2 Get Reviews
+**Endpoint**: `GET /reviews/maker/{makerUserId}`
+**Endpoint**: `GET /reviews/product/{productId}`
+
+---
+
+## 2. ABUSE REPORTING
+
+### 2.1 Report Abuse
+**Endpoint**: `POST /abuse-reports`
+
+```typescript
+{
+  reportedEntityType: 'product' | 'review' | 'maker' | 'collector',
+  reportedEntityId: string,
+  reason: 'spam' | 'inappropriate' | 'fraud' | 'other',
+  description?: string,
+}
+```
+
+**Events Emitted**: `AbuseReported`
+
+---
+
+## API Endpoints
+
+- `POST /reviews` - Submit review
+- `GET /reviews/maker/{makerUserId}` - Get maker reviews
+- `GET /reviews/product/{productId}` - Get product reviews
+- `GET /reviews/order/{orderId}` - Check if order reviewed
+- `GET /ratings/{entityType}/{entityId}` - Get rating aggregate
+- `POST /abuse-reports` - Report abuse
+
+---
+
+**Note:** See `inter-domain-data-requirements.txt` for events.

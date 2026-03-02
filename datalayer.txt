@@ -1,0 +1,257 @@
+# Review & Trust Domain - Data Layer Design
+
+**Purpose:** Reviews, ratings, and trust signals for platform credibility.
+
+**Database:** `review_db`
+
+**CDK Stack:** `review-stack`
+
+---
+
+## Tables
+
+### `reviews`
+
+**Partition Key:** `reviewId` (String, UUID)
+**Sort Key:** None
+
+**Attributes:**
+* `id` (String, PK, UUID)
+* `order_id` (String) - Reference to Order domain (one review per order)
+* `reviewer_user_id` (String) - Collector who wrote review
+* `maker_user_id` (String) - Maker being reviewed
+* `product_id` (String) - Product being reviewed
+* `rating` (Number) - 1-5 stars
+* `comment` (String) - Review text
+* `media_urls` (List of Strings, optional) - Photos/videos from collector
+* `moderation_status` (String) - "pending" | "approved" | "rejected"
+* `moderated_by` (String, optional) - Admin user ID
+* `moderated_at` (String, ISO 8601, optional)
+* `rejection_reason` (String, optional)
+* `created_at` (String, ISO 8601)
+* `updated_at` (String, ISO 8601)
+
+**GSI:**
+* `GSI1`: `makerUserId` (PK), `createdAt` (SK) - Reviews for a maker
+  * **Use Case:** Maker profile reviews section
+* `GSI2`: `productId` (PK), `createdAt` (SK) - Reviews for a product
+  * **Use Case:** Product detail page reviews
+* `GSI3`: `orderId` (PK) - Find review for an order
+  * **Use Case:** Check if order has been reviewed
+* `GSI4`: `moderationStatus` (PK), `createdAt` (SK) - Pending reviews
+  * **Use Case:** Admin moderation queue
+
+**TTL:** None
+
+---
+
+### `rating_aggregates`
+
+**Partition Key:** `entityId` (String)
+**Sort Key:** `entityType` (String)
+
+**Attributes:**
+* `entity_id` (String, PK) - `maker_user_id` or `product_id`
+* `entity_type` (String, SK) - "maker" | "product"
+* `average_rating` (Number) - Calculated average (1-5)
+* `total_reviews` (Number) - Total number of approved reviews
+* `rating_distribution` (Map) - { "5": 10, "4": 5, "3": 2, "2": 1, "1": 0 }
+* `updated_at` (String, ISO 8601)
+
+**GSI:** None
+
+**TTL:** None
+
+**Note:** This is an aggregate table. Updated via events when reviews are approved.
+
+---
+
+### `abuse_reports`
+
+**Partition Key:** `reportId` (String, UUID)
+**Sort Key:** None
+
+**Attributes:**
+* `id` (String, PK, UUID)
+* `reporter_user_id` (String) - User who reported
+* `reported_entity_type` (String) - "product" | "review" | "maker" | "collector"
+* `reported_entity_id` (String) - ID of reported entity
+* `reason` (String) - "spam" | "inappropriate" | "fraud" | "other"
+* `description` (String, optional) - Additional details
+* `status` (String) - "pending" | "reviewed" | "resolved" | "dismissed"
+* `reviewed_by` (String, optional) - Admin user ID
+* `reviewed_at` (String, ISO 8601, optional)
+* `resolution` (String, optional) - What action was taken
+* `created_at` (String, ISO 8601)
+
+**GSI:**
+* `GSI1`: `status` (PK), `createdAt` (SK) - Find pending reports
+  * **Use Case:** Admin moderation queue
+* `GSI2`: `reportedEntityType` (PK), `reportedEntityId` (SK) - Find reports for entity
+  * **Use Case:** Check if entity has been reported
+
+**TTL:** None
+
+---
+
+## Query Patterns
+
+### Get Reviews for Maker
+**Table:** `reviews`
+**Operation:** Query on GSI1
+**Key:** `maker_user_id`, filter by `moderation_status = "approved"`
+**Use Case:** Maker profile reviews section
+
+### Get Reviews for Product
+**Table:** `reviews`
+**Operation:** Query on GSI2
+**Key:** `product_id`, filter by `moderation_status = "approved"`
+**Use Case:** Product detail page reviews
+
+### Get Rating Aggregate
+**Table:** `rating_aggregates`
+**Operation:** GetItem
+**Key:** `entity_id`, `entity_type`
+**Use Case:** Show average rating on maker profile, product page
+
+### Check if Order Reviewed
+**Table:** `reviews`
+**Operation:** Query on GSI3
+**Key:** `order_id`
+**Use Case:** Show review prompt if order not reviewed
+
+### Get Pending Reviews (Admin)
+**Table:** `reviews`
+**Operation:** Query on GSI4
+**Key:** `moderation_status = "pending"`
+**Use Case:** Admin moderation queue
+
+### Get Pending Abuse Reports (Admin)
+**Table:** `abuse_reports`
+**Operation:** Query on GSI1
+**Key:** `status = "pending"`
+**Use Case:** Admin moderation queue
+
+---
+
+## Events Consumed
+
+This domain consumes events from other domains:
+
+* `OrderDelivered` (from Order Domain)
+  * **Action:** Enable review creation for delivered orders
+
+* `OrderCompleted` (from Order Domain)
+  * **Action:** Enable review creation for completed orders
+
+---
+
+## Events Published
+
+This domain publishes the following events to EventBridge:
+
+* `ReviewSubmitted`
+  * `review_id` (String)
+  * `reviewer_user_id` (String)
+  * `maker_user_id` (String)
+  * `product_id` (String)
+  * `rating` (Number)
+  * `created_at` (String, ISO 8601)
+
+* `ReviewApproved`
+  * `review_id` (String)
+  * `maker_user_id` (String)
+  * `product_id` (String)
+  * `rating` (Number)
+  * `approved_at` (String, ISO 8601)
+
+* `ReviewRejected`
+  * `review_id` (String)
+  * `rejection_reason` (String)
+  * `rejected_at` (String, ISO 8601)
+
+* `MakerRatingUpdated`
+  * `maker_user_id` (String)
+  * `average_rating` (Number)
+  * `total_reviews` (Number)
+  * `updated_at` (String, ISO 8601)
+
+* `ProductRatingUpdated`
+  * `product_id` (String)
+  * `average_rating` (Number)
+  * `total_reviews` (Number)
+  * `updated_at` (String, ISO 8601)
+
+* `AbuseReportCreated`
+  * `report_id` (String)
+  * `reported_entity_type` (String)
+  * `reported_entity_id` (String)
+  * `reason` (String)
+  * `created_at` (String, ISO 8601)
+
+---
+
+## Design Considerations
+
+1. **One Review Per Order:** Each order can have one review. Enforced by checking `order_id` uniqueness.
+
+2. **Moderation Workflow:**
+   - Review submitted → status "pending"
+   - Admin reviews → status "approved" or "rejected"
+   - Only approved reviews count toward ratings
+
+3. **Rating Aggregation:** Ratings calculated and cached in `rating_aggregates`. Updated when review approved/rejected.
+
+4. **Rating Distribution:** Stores count of each star rating (1-5) for display (e.g., "10 five-star reviews").
+
+5. **Media in Reviews:** Collectors can upload photos/videos with reviews. Stored in S3, URLs in `media_urls`.
+
+6. **Abuse Reporting:** Users can report reviews, products, makers, or collectors. Admin reviews and takes action.
+
+---
+
+## Access Patterns
+
+### High Frequency
+* Get reviews for product (product detail page)
+* Get reviews for maker (maker profile page)
+* Get rating aggregate (maker profile, product page)
+
+### Medium Frequency
+* Submit review (after order completion)
+* Check if order reviewed (order detail page)
+
+### Low Frequency
+* Moderate reviews (admin)
+* Report abuse (user)
+* Moderate abuse reports (admin)
+
+---
+
+## Data Consistency
+
+* **Eventually Consistent:** Rating aggregates updated via events. Typical delay: < 1 second.
+
+---
+
+## Next Steps
+
+1. **Create CDK stack** with DynamoDB tables
+2. **Set up S3 bucket** for review media
+3. **Set up EventBridge rules** for consumed/published events
+4. **Create Lambda functions** for:
+   * Review submission
+   * Review moderation (admin)
+   * Rating aggregation calculation
+   * Abuse report handling
+5. **Build API Gateway** endpoints:
+   * `POST /reviews`
+   * `GET /reviews/product/{product_id}`
+   * `GET /reviews/maker/{maker_user_id}`
+   * `GET /reviews/order/{order_id}`
+   * `GET /ratings/{entity_type}/{entity_id}`
+   * `POST /abuse-reports`
+   * `GET /admin/reviews/pending` (admin only)
+   * `PUT /admin/reviews/{review_id}/approve` (admin only)
+   * `PUT /admin/reviews/{review_id}/reject` (admin only)
+   * `GET /admin/abuse-reports/pending` (admin only)

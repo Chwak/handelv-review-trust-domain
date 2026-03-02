@@ -1,0 +1,211 @@
+================================================================================
+REVIEW TRUST DOMAIN - SCOPE & RESPONSIBILITY
+================================================================================
+
+DOMAIN PURPOSE
+================================================================================
+
+The Review Trust Domain manages reviews, ratings, moderation, and trust signals for the platform. This domain is responsible for maintaining platform credibility through reviews and ratings.
+
+================================================================================
+WHAT THIS DOMAIN OWNS
+================================================================================
+
+1. Reviews
+   - Review records (order, reviewer, maker, product, rating, comment)
+   - Review status (PENDING, APPROVED, REJECTED, FLAGGED)
+   - Review media (images, videos)
+   - Review timestamps
+
+2. Rating Aggregates
+   - Average ratings for makers
+   - Average ratings for products
+   - Review counts
+   - Rating distribution
+
+3. Abuse Reports
+   - Abuse report records
+   - Abuse reasons and descriptions
+   - Abuse report status
+   - Abuse report metadata
+
+4. Moderation Data
+   - Moderation decisions
+   - Moderation notes
+   - Moderation timestamps
+   - Moderation history
+
+================================================================================
+WHAT THIS DOMAIN IS RESPONSIBLE FOR
+================================================================================
+
+1. Review Management
+   - Creating reviews for completed orders
+   - Validating review eligibility
+   - Storing review data
+   - Managing review lifecycle
+
+2. Rating Aggregation
+   - Calculating average ratings
+   - Updating rating aggregates
+   - Maintaining rating accuracy
+   - Supporting rating queries
+
+3. Review Moderation
+   - Moderating reviews (approve, reject, flag)
+   - Running automated moderation checks
+   - Handling manual moderation
+   - Managing moderation workflow
+
+4. Abuse Handling
+   - Creating abuse reports
+   - Processing abuse reports
+   - Handling abusive content
+   - Supporting abuse investigation
+
+5. Trust Signals
+   - Providing rating data
+   - Supporting trust indicators
+   - Enabling review display
+   - Supporting rating-based features
+
+6. Event Publishing
+   - Publishing ReviewSubmitted events
+   - Publishing ReviewApproved events
+   - Publishing ReviewRejected events
+   - Publishing MakerRatingUpdated events
+   - Publishing ProductRatingUpdated events
+   - Publishing AbuseReportCreated events
+
+================================================================================
+WHAT THIS DOMAIN DOES NOT OWN
+================================================================================
+
+1. Orders
+   - Order data (Order Domain)
+   - Order management (Order Domain)
+   - Order status (Order Domain)
+
+2. Products
+   - Product data (Shelf Domain)
+   - Product details (Shelf Domain)
+
+3. Maker Profiles
+   - Maker profile data (Maker Domain)
+   - Maker verification (Verification Trust Domain)
+
+4. Collector Profiles
+   - Collector profile data (Collector Domain)
+   - Collector preferences (Collector Domain)
+
+5. Notifications
+   - Notification delivery (Notification Domain)
+   - Notification preferences (Notification Domain)
+
+6. Discovery
+   - Search indexes (Discovery Domain)
+   - Discovery feeds (Discovery Domain)
+
+================================================================================
+DOMAIN BOUNDARIES
+================================================================================
+
+1. Input Boundaries
+   - Receives review creation requests
+   - Receives moderation requests
+   - Receives abuse report requests
+   - Consumes OrderDelivered, OrderCompleted events (to enable review creation)
+   - Does NOT receive order data directly
+
+2. Output Boundaries
+   - Provides review data
+   - Provides rating data
+   - Provides abuse report data
+   - Publishes review events
+   - Does NOT provide order data
+   - Does NOT provide product data
+
+3. Data Boundaries
+   - Owns:
+      - `reviews` table (source-of-truth for review content and status)
+      - `rating_aggregates` table (authoritative aggregations for maker and product ratings)
+      - `abuse_reports` table
+   - Does NOT own:
+      - Order data (Order Domain)
+      - Product data (Product Domain)
+      - Maker or Collector profile records (Maker/Collector domains)
+   - Integration Notes:
+      - Publishes `MakerRatingUpdated` and `ProductRatingUpdated` events after recalculating aggregates; consuming domains (e.g., Maker Domain) should update their local read-models from these events rather than recomputing aggregates.
+
+4. Integration Boundaries
+   - Consumes events from Order Domain
+   - Publishes events for Maker Domain
+   - Publishes events for Product Domain
+   - Publishes events for Discovery Domain
+   - Publishes events for Notification Domain
+   - Does NOT directly access other domain databases
+
+================================================================================
+KEY RESPONSIBILITIES
+================================================================================
+
+1. Manage Reviews
+   - Enable review creation
+   - Validate review eligibility
+   - Store review data
+   - Support review queries
+
+2. Maintain Ratings
+   - Calculate accurate ratings
+   - Update rating aggregates
+   - Maintain rating consistency
+   - Support rating queries
+
+3. Moderate Content
+   - Moderate reviews appropriately
+   - Run automated checks
+   - Handle manual moderation
+   - Process abuse reports
+
+4. Support Trust
+   - Provide trust signals
+   - Enable rating display
+   - Support trust-based features
+   - Maintain platform credibility
+
+================================================================================
+CROSS-DOMAIN DEPENDENCIES
+================================================================================
+
+This Domain Provides To:
+- Maker Domain: MakerRatingUpdated events (to update maker profile rating)
+- Shelf Domain: ShelfItemRatingUpdated events (to update product rating)
+- Discovery Domain: ReviewSubmitted, ReviewApproved, MakerRatingUpdated, ShelfItemRatingUpdated events (for ranking signals)
+- Notification Domain: ReviewSubmitted, ReviewApproved, AbuseReportCreated events
+
+This Domain Consumes From:
+- Order Domain: OrderDelivered, OrderCompleted events (to enable review creation)
+
+================================================================================
+TECHNICAL SCOPE
+================================================================================
+
+Technologies:
+- DynamoDB (reviews, rating_aggregates, abuse_reports)
+- AppSync GraphQL API
+- Lambda functions for review and moderation logic
+
+Data Storage:
+- reviews table
+- rating_aggregates table
+- abuse_reports table
+
+API Type:
+- GraphQL API (AppSync)
+
+Event Communication:
+- EventBridge for publishing and consuming events
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

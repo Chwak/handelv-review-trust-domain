@@ -1,0 +1,122 @@
+type Query @aws_cognito_user_pools {
+  getReview(reviewId: ID!): Review
+  listReviews(
+    shelfItemId: ID
+    makerUserId: ID
+    collectorUserId: ID
+    limit: Int
+    nextToken: String
+  ): ReviewsConnection
+  getRatingAggregate(shelfItemId: ID, makerUserId: ID): RatingAggregate
+  getAbuseReport(reportId: ID!): AbuseReport
+  listAbuseReports(limit: Int, nextToken: String): AbuseReportsConnection
+}
+
+type Mutation @aws_cognito_user_pools {
+  submitReview(input: SubmitReviewInput!): Review
+  updateReview(input: UpdateReviewInput!): Review
+  deleteReview(reviewId: ID!): Boolean
+  submitAbuseReport(input: SubmitAbuseReportInput!): AbuseReport
+  resolveAbuseReport(reportId: ID!, resolution: String): AbuseReport
+}
+
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DELETED
+}
+
+type Review {
+  reviewId: ID!
+  orderId: ID!
+  shelfItemId: ID!
+  makerUserId: ID!
+  collectorUserId: ID!
+  rating: Int!
+  comment: String
+  media: [ReviewMedia!]
+  status: ReviewStatus!
+  moderationNotes: String
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+  approvedAt: AWSDateTime
+}
+
+type ReviewsConnection {
+  items: [Review!]!
+  nextToken: String
+}
+
+type ReviewMedia {
+  mediaId: ID!
+  mediaType: String!
+  url: String!
+}
+
+type RatingAggregate {
+  shelfItemId: ID
+  makerUserId: ID
+  averageRating: Float!
+  totalReviews: Int!
+  ratingBreakdown: RatingBreakdown!
+  lastUpdated: AWSDateTime!
+}
+
+type RatingBreakdown {
+  fiveStar: Int!
+  fourStar: Int!
+  threeStar: Int!
+  twoStar: Int!
+  oneStar: Int!
+}
+
+type AbuseReport {
+  reportId: ID!
+  reviewId: ID!
+  reporterUserId: ID!
+  reason: String!
+  status: AbuseReportStatus!
+  resolution: String
+  createdAt: AWSDateTime!
+  resolvedAt: AWSDateTime
+}
+
+enum AbuseReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+type AbuseReportsConnection {
+  items: [AbuseReport!]!
+  nextToken: String
+}
+
+input SubmitReviewInput {
+  orderId: ID!
+  shelfItemId: ID!
+  makerUserId: ID!
+  collectorUserId: ID!
+  rating: Int!
+  comment: String
+  media: [ReviewMediaInput!]
+}
+
+input ReviewMediaInput {
+  mediaType: String!
+  url: String!
+}
+
+input UpdateReviewInput {
+  reviewId: ID!
+  comment: String
+  rating: Int
+}
+
+input SubmitAbuseReportInput {
+  reviewId: ID!
+  reporterUserId: ID!
+  reason: String!
+}

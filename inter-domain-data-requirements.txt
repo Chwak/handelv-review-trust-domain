@@ -1,0 +1,104 @@
+# Review Trust Domain - Inter-Domain Data Requirements
+
+## Overview
+All events consumed and emitted for reviews.
+
+**Domain:** Review Trust Domain  
+**Last Updated:** 2026-01-31
+
+---
+
+## 1. EVENTS CONSUMED
+
+### 1.1 From Order Domain
+**Event**: `OrderCompleted`
+
+```typescript
+{
+  event: "OrderCompleted",
+  orderId: string,
+  collectorUserId: string,
+  makerUserId: string,
+  productId: string,
+}
+```
+
+**Action**: Enable review submission for this order
+
+---
+
+## 2. EVENTS EMITTED
+
+### 2.1 `ReviewSubmitted`
+**Consumers**: Maker, Notification
+
+```typescript
+{
+  event: "ReviewSubmitted",
+  reviewId: string,
+  makerUserId: string,
+  productId: string,
+  rating: number,
+  createdAt: string,
+}
+```
+
+### 2.2 `ReviewApproved`
+**Consumers**: Maker, Discovery
+
+```typescript
+{
+  event: "ReviewApproved",
+  reviewId: string,
+  makerUserId: string,
+  rating: number,
+  approvedAt: string,
+}
+```
+
+### 2.3 `RatingUpdated`
+**Consumers**: Maker, Discovery
+
+```typescript
+{
+  event: "RatingUpdated",
+  entityId: string,
+  entityType: 'maker' | 'product',
+  averageRating: number,
+  totalReviews: number,
+}
+```
+
+### 2.4 `AbuseReported`
+**Consumers**: Admin Dashboard
+
+```typescript
+{
+  event: "AbuseReported",
+  reportId: string,
+  reportedEntityType: string,
+  reportedEntityId: string,
+  reason: string,
+}
+```
+
+---
+
+## DEPENDENCY MAP
+
+```
+Review Trust Domain:
+├── Consumes From:
+│   └── Order Domain
+│       └── OrderCompleted
+└── Provides To:
+    ├── Maker Domain
+    │   ├── ReviewSubmitted
+    │   ├── ReviewApproved
+    │   └── RatingUpdated
+    ├── Discovery Domain
+    │   ├── ReviewApproved
+    │   └── RatingUpdated
+    └── Notification Domain
+        └── ReviewSubmitted
+```
